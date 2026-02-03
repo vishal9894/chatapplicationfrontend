@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Camera } from "lucide-react";
 import { updateUserProfile } from "../api/userApi";
+import { Navigate } from "react-router-dom";
 
 const ProfileModal = ({ user, onClose }) => {
   const [name, setName] = useState(user?.name || "");
@@ -35,9 +36,15 @@ const ProfileModal = ({ user, onClose }) => {
     }
   };
 
+  const HandleLogout = ()=>{
+    localStorage.clear("token")
+    window.location.reload()
+    Navigate("/login")
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6 relative">
+      <div className="bg-white lg:w-full max-w-md w-80 rounded-2xl shadow-xl p-6 relative">
         
         {/* Close */}
         <button
@@ -94,7 +101,9 @@ const ProfileModal = ({ user, onClose }) => {
           >
             {loading ? "Saving..." : "Save Changes"}
           </button>
+
         </form>
+        <button onClick={()=>HandleLogout()} className="bg-red-500 rounded-lg py-2 w-full  my-2 text-white">logout</button>
       </div>
     </div>
   );

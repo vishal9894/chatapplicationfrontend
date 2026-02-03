@@ -12,10 +12,10 @@ export const fetchUser = async () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
+      withCredentials: true, // only if backend allows credentials
     });
 
-   
-    return response.data; // ✅ return only data
+    return response.data;
   } catch (error) {
     console.error(error.response?.data?.message || error.message);
     throw error;
@@ -32,39 +32,44 @@ export const fetchUserProfile = async () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
+      withCredentials: true,
     });
 
-    return response.data; // ✅ return data
+    return response.data;
   } catch (error) {
     console.error(error.response?.data?.message || error.message);
     throw error;
   }
 };
 
+// ✅ Update user profile
 export const updateUserProfile = async (id, formData) => {
-  const token = localStorage.getItem("token");
+  try {
+    const token = localStorage.getItem("token");
 
-  const response = await axios.put(
-    `${BaseUrl}/api/user/update/${id}`,
-    formData,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "multipart/form-data",
-      },
-    }
-  );
-  fetchUserProfile();
+    const response = await axios.put(
+      `${BaseUrl}/api/user/update/${id}`,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+        withCredentials: true,
+      }
+    );
 
-  return response.data;
+    await fetchUserProfile(); // refresh profile
+    return response.data;
+  } catch (error) {
+    console.error(error.response?.data?.message || error.message);
+    throw error;
+  }
 };
 
+// ✅ Fetch messages
 export const fetchMessages = async ({ selectedUserId, currentUserId, token }) => {
   try {
-    if (!selectedUserId || !currentUserId) {
-      throw new Error("Missing user IDs");
-    }
-
     const response = await axios.get(
       `${BaseUrl}/api/messages/${selectedUserId}?currentUserId=${currentUserId}`,
       {
@@ -72,11 +77,11 @@ export const fetchMessages = async ({ selectedUserId, currentUserId, token }) =>
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+        withCredentials: true,
       }
     );
 
-    // Format messages for frontend
-    const formattedMessages = response.data.map((msg) => ({
+    return response.data.map((msg) => ({
       id: msg._id,
       text: msg.message,
       sender: msg.senderId === currentUserId ? "me" : "them",
@@ -85,10 +90,8 @@ export const fetchMessages = async ({ selectedUserId, currentUserId, token }) =>
         minute: "2-digit",
       }),
     }));
-
-    return formattedMessages;
   } catch (error) {
     console.error("Failed to fetch messages:", error.response?.data || error.message);
-    return []; // return empty array on error
+    return [];
   }
 };

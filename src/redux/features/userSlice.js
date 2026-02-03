@@ -8,13 +8,13 @@ const userSlice = createSlice({
     error: null,
     selectedUser: null,
     userProfile: null,
-    lastmessage : null,
+    lastmessage: {}, // store last messages per user
   },
   reducers: {
     setUser: (state, action) => {
       state.user = action.payload;
     },
-    setIsLoaing: (state, action) => {
+    setIsLoading: (state, action) => {
       state.isLoading = true;
       state.error = null;
     },
@@ -31,20 +31,21 @@ const userSlice = createSlice({
     setUserProfile: (state, action) => {
       state.userProfile = action.payload;
     },
-    setLastmessage :(state , action) =>{
-      state.lastmessage = action.payload;
-    }
+    setLastMessage: (state, action) => {
+      const { userId, message } = action.payload;
+      state.lastmessage[userId] = message; // store per user
+    },
   },
 });
 
 export const {
   setError,
-  setIsLoaing,
+  setIsLoading,
   setUser,
   selectUser,
   clearSelectedUser,
   setUserProfile,
-  setLastmessage
+  setLastMessage,
 } = userSlice.actions;
 
 export default userSlice.reducer;

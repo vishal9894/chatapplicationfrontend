@@ -3,148 +3,128 @@ import { useDispatch, useSelector } from "react-redux";
 import { IoChatboxEllipsesOutline } from "react-icons/io5";
 import { Send, Phone, Video } from "lucide-react";
 import { io } from "socket.io-client";
-import axios from "axios";
 import { fetchMessages } from "../api/userApi";
-import { setLastmessage } from "../redux/features/userSlice";
+import { setLastMessage, selectUser } from "../redux/features/userSlice";
 
 const SOCKET_URL = import.meta.env.VITE_BACKEND_API;
-
-// ✅ Socket OUTSIDE component
 const socket = io(SOCKET_URL, { autoConnect: false });
 
 const Home = () => {
-  const { selectedUser, userProfile } = useSelector((state) => state.user);
+  const dispatch = useDispatch();
+  const { selectedUser: reduxSelectedUser, userProfile } = useSelector(
+    (state) => state.user
+  );
+
   const currentUser = JSON.parse(localStorage.getItem("user") || "null");
 
-  const [message, setMessage] = useState("");
+  const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [message, setMessage] = useState("");
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const messagesEndRef = useRef(null);
-  const dispatch = useDispatch();
 
+  const userId = userProfile?._id || currentUser?._id;
   const token = localStorage.getItem("token");
 
-  // ---------------- GET USER ID ----------------
-  const getUserId = () => {
-    if (userProfile?._id) return userProfile._id;
-    if (currentUser?._id) return currentUser._id;
-    return null;
-  };
-  const userId = getUserId();
-
-  // ---------------- FETCH STORED MESSAGES ----------------
+  // Load selected user
   useEffect(() => {
-    const getMessages = async () => {
-      if (!selectedUser) return;
+    const savedUser = localStorage.getItem("selectedUser");
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      if (!selectedUser || selectedUser._id !== user._id) {
+        setSelectedUser(user);
+        dispatch(selectUser(user));
+      }
+    } else if (reduxSelectedUser) {
+      if (!selectedUser || selectedUser._id !== reduxSelectedUser._id) {
+        setSelectedUser(reduxSelectedUser);
+        localStorage.setItem("selectedUser", JSON.stringify(reduxSelectedUser));
+      }
+    }
+  }, [reduxSelectedUser, selectedUser, dispatch]);
 
-      const token = localStorage.getItem("token");
+  // Fetch messages from DB
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!selectedUser?._id || !userId) return;
+
       const msgs = await fetchMessages({
         selectedUserId: selectedUser._id,
         currentUserId: userId,
         token,
       });
 
-      setMessages(msgs);
-      dispatch(setLastmessage(msgs[msgs.length - 2]))
-       
-      
-
-      
+      setMessages(msgs || []);
+      if (msgs?.length) dispatch(setLastMessage(msgs[msgs.length - 1]));
     };
+    loadMessages();
+  }, [selectedUser, userId, token, dispatch]);
 
-    getMessages();
-  }, [selectedUser, userId , dispatch]);
-
-
-
-  // ---------------- SOCKET CONNECT ----------------
+  // Socket connection
   useEffect(() => {
     if (!userId) return;
+
     socket.connect();
     socket.emit("join", userId);
 
+    // Online users list
+    socket.on("onlineUsers", (users) => setOnlineUsers(users));
+
+    // Receive messages
     socket.on("receiveMessage", (data) => {
-      // Only add if message is relevant to current chat
-      if (data.senderId === selectedUser?._id || data.receiverId === userId) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            text: data.message,
-            sender: data.senderId === userId ? "me" : "them",
-            time: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          },
-        ]);
+      if (!messages.find((msg) => msg.id === data._id)) {
+        if (data.senderId === selectedUser._id || data.receiverId === userId) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: data._id,
+              text: data.message,
+              sender: data.senderId === userId ? "me" : "them",
+              time: new Date(data.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            },
+          ]);
+        }
       }
     });
 
     return () => {
       socket.off("receiveMessage");
+      socket.off("onlineUsers");
       socket.disconnect();
     };
-  }, [userId, selectedUser?._id]);
+  }, [userId, selectedUser?._id, messages]);
 
-  // ---------------- CLEAR & FETCH CHAT ON USER CHANGE ----------------
-  useEffect(() => {
-    setMessages([]);
-    fetchMessages();
-  }, [selectedUser]);
-
-  // ---------------- AUTO SCROLL ----------------
+  // Auto scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ---------------- SEND MESSAGE ----------------
-  const handleSendMessage = async (e) => {
+  // Send message
+  const handleSendMessage = (e) => {
     e.preventDefault();
     if (!message.trim() || !userId || !selectedUser?._id) return;
 
-    const newMessage = {
+    const tempMessage = {
       id: Date.now(),
       text: message,
       sender: "me",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
-    // Show immediately in UI
-    setMessages((prev) => [...prev, newMessage]);
+    setMessages((prev) => [...prev, tempMessage]);
 
-    // Emit via Socket
     socket.emit("sendMessage", {
       senderId: userId,
       receiverId: selectedUser._id,
       message,
     });
 
-    // Store message in backend
-    try {
-      await axios.post(
-        `${SOCKET_URL}/api/messages`,
-        {
-          senderId: userId,
-          receiverId: selectedUser._id,
-          message,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-    } catch (error) {
-      console.error("Failed to store message in DB:", error);
-    }
-
     setMessage("");
   };
 
-  // ---------------- EMPTY STATE ----------------
   if (!selectedUser) {
     return (
       <div className="flex flex-col w-full items-center justify-center h-screen bg-gray-200 text-gray-600 gap-4">
@@ -155,7 +135,6 @@ const Home = () => {
     );
   }
 
-  // ---------------- UI ----------------
   return (
     <div className="flex flex-col w-full h-screen bg-gray-100">
       {/* HEADER */}
@@ -163,11 +142,7 @@ const Home = () => {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden">
             {selectedUser?.image ? (
-              <img
-                src={selectedUser.image}
-                alt={selectedUser.name}
-                className="w-full h-full rounded-full object-cover"
-              />
+              <img src={selectedUser.image} alt={selectedUser.name} className="w-full h-full rounded-full object-cover" />
             ) : (
               <div className="w-full h-full bg-indigo-600 flex items-center justify-center text-white font-bold uppercase">
                 {selectedUser?.name?.charAt(0)}
@@ -176,10 +151,11 @@ const Home = () => {
           </div>
           <div>
             <h2 className="font-semibold">{selectedUser.name}</h2>
-            <p className="text-xs text-green-500">Online</p>
+            <p className="text-xs" style={{ color: onlineUsers.includes(selectedUser._id) ? "green" : "red" }}>
+              {onlineUsers.includes(selectedUser._id) ? "Online" : "Offline"}
+            </p>
           </div>
         </div>
-
         <div className="flex gap-2">
           <Phone className="cursor-pointer" size={18} />
           <Video className="cursor-pointer" size={18} />
@@ -190,19 +166,8 @@ const Home = () => {
       <div className="flex-1 overflow-y-auto p-4">
         <div className="max-w-5xl mx-auto space-y-2">
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${
-                msg.sender === "me" ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`px-4 py-2 flex items-center gap-1 rounded-lg max-w-xs ${
-                  msg.sender === "me"
-                    ? "bg-gray-500 text-white rounded-br-none"
-                    : "bg-white border rounded-bl-none"
-                }`}
-              >
+            <div key={msg.id} className={`flex ${msg.sender === "me" ? "justify-end" : "justify-start"}`}>
+              <div className={`px-4 py-2 flex items-center gap-1 rounded-lg max-w-xs ${msg.sender === "me" ? "bg-gray-500 text-white rounded-br-none" : "bg-white border rounded-bl-none"}`}>
                 <p>{msg.text}</p>
                 <p className="text-xs text-right opacity-70">{msg.time}</p>
               </div>
@@ -213,21 +178,9 @@ const Home = () => {
       </div>
 
       {/* INPUT */}
-      <form
-        onSubmit={handleSendMessage}
-        className="bg-white border-t p-3 flex items-center lg:pl-12 gap-2"
-      >
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 border rounded-full px-4 py-2 focus:outline-none"
-        />
-        <button
-          type="submit"
-          className="bg-indigo-600 text-white p-2 rounded-full"
-        >
+      <form onSubmit={handleSendMessage} className="bg-white border-t p-3 flex items-center lg:pl-12 gap-2">
+        <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border rounded-full px-4 py-2 focus:outline-none" />
+        <button type="submit" className="bg-indigo-600 text-white p-2 rounded-full">
           <Send />
         </button>
       </form>

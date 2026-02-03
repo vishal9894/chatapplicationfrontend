@@ -1,6 +1,7 @@
 import axios from "axios";
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { fetchUserProfile } from "../api/userApi";
 
 const BaseUrl = import.meta.env.VITE_BACKEND_API;
 
@@ -38,6 +39,8 @@ const Login = () => {
       );
 
       console.log("Login Success:", response);
+
+      fetchUserProfile();
    
       // Save token
       localStorage.setItem("token", response.data.user.token);
@@ -106,9 +109,11 @@ const Login = () => {
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Don’t have an account?{" "}
+         <Link to="/signup">
           <span className="text-indigo-600 font-medium cursor-pointer hover:underline">
             Sign up
           </span>
+         </Link>
         </p>
       </div>
     </div>
